@@ -1,0 +1,2 @@
+include ':app', ':plugin', ':mylibrary'
+rootProject.name='BaseTransform'
