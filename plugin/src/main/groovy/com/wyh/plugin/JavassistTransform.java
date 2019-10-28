@@ -13,6 +13,7 @@ import com.android.build.api.transform.TransformOutputProvider;
 import com.android.build.gradle.AppExtension;
 import com.android.build.gradle.internal.pipeline.TransformManager;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FileUtils;
 import org.gradle.api.Project;
 
@@ -20,6 +21,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -28,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import javassist.ClassPath;
+import javassist.ClassClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.NotFoundException;
@@ -40,15 +42,12 @@ import javassist.NotFoundException;
 public abstract class JavassistTransform extends Transform {
 
     protected ClassPool classPool;
-    private boolean debug = true;
-    private ExecutorService transformJarExecutor;
     private ExecutorService transformClassFileExecutor;
     private Project project;
 
     public JavassistTransform(Project project) {
         this.project = project;
         classPool = ClassPool.getDefault();
-        transformJarExecutor = Executors.newFixedThreadPool(20);
         transformClassFileExecutor = Executors.newFixedThreadPool(20);
     }
 
@@ -73,130 +72,129 @@ public abstract class JavassistTransform extends Transform {
     }
 
     @Override
-    public void transform(TransformInvocation transformInvocation) throws IOException {
-        Collection<TransformInput> inputs = transformInvocation.getInputs();
-        TransformOutputProvider outputProvider = transformInvocation.getOutputProvider();
-        boolean isIncremental = transformInvocation.isIncremental();
-        if (!isIncremental) {
-            outputProvider.deleteAll();
-        }
-        //todo bootClasspath
-        ///Users/meitu/Library/Android/sdk/platforms/android-28/android.jar
-        AppExtension appExtension = (AppExtension) project.getProperties().get("android");
-        String bootClassPath = appExtension.getBootClasspath().toString();
-        //todo 这个顺序为什么在线程池任务后边？
-        println("bootClassPath:" + bootClassPath);
-        insertClassPath(bootClassPath);
-        for (TransformInput input : inputs) {
-            for (JarInput jarInput : input.getJarInputs()) {
-                Status status = jarInput.getStatus();
-                File dest = outputProvider.getContentLocation(
-                        jarInput.getName(),
-                        jarInput.getContentTypes(),
-                        jarInput.getScopes(),
-                        Format.JAR);
-                final String inputClassPath = jarInput.getFile().getAbsolutePath();
-                if (isIncremental) {
-                    switch (status) {
-                        case NOTCHANGED:
-                            break;
-                        case ADDED:
-                        case CHANGED:
-                            transformJarExecutor.execute(() -> transformJarInner(inputClassPath, jarInput.getFile(), dest));
-                            break;
-                        case REMOVED:
-                            if (dest.exists()) {
-                                FileUtils.forceDelete(dest);
-                            }
-                            break;
-                    }
-                } else {
-                    transformJarExecutor.execute(() -> transformJarInner(inputClassPath, jarInput.getFile(), dest));
+    public void transform(TransformInvocation transformInvocation) {
+        try {
+            Collection<TransformInput> inputs = transformInvocation.getInputs();
+            TransformOutputProvider outputProvider = transformInvocation.getOutputProvider();
+            boolean isIncremental = transformInvocation.isIncremental();
+            if (!isIncremental) {
+                outputProvider.deleteAll();
+            }
+            AppExtension appExtension = (AppExtension) project.getProperties().get("android");
+            List<File> bootClassPaths = appExtension.getBootClasspath();
+            if (bootClassPaths != null) {
+                for (File bootDir : bootClassPaths) {
+                    classPool.appendClassPath(bootDir.getAbsolutePath());
                 }
             }
-        }
-        transformJarExecutor.shutdown();
-        try {
-            transformJarExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MINUTES);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        for (TransformInput input : inputs) {
-            for (DirectoryInput directoryInput : input.getDirectoryInputs()) {
-                File dest = outputProvider.getContentLocation(
-                        directoryInput.getName(),
-                        directoryInput.getContentTypes(),
-                        directoryInput.getScopes(),
-                        Format.DIRECTORY);
-                FileUtils.forceMkdir(dest);
-                final String inputClassPath = directoryInput.getFile().getAbsolutePath();
-                final String destDirPath = dest.getAbsolutePath();
-                insertClassPath(inputClassPath);
-                if (isIncremental) {
-                    Map<File, Status> fileStatusMap = directoryInput.getChangedFiles();
-                    for (Map.Entry<File, Status> changedFile : fileStatusMap.entrySet()) {
-                        Status status = changedFile.getValue();
-                        File inputFile = changedFile.getKey();
-                        String destFilePath = inputFile.getAbsolutePath().replace(inputClassPath, destDirPath);
-                        File destFile = new File(destFilePath);
+            classPool.appendClassPath(new ClassClassPath(this.getClass()));
+            for (TransformInput input : inputs) {
+                for (JarInput jarInput : input.getJarInputs()) {
+                    Status status = jarInput.getStatus();
+
+                    // 重命名输出文件（同目录copyFile会冲突）
+                    String jarName = jarInput.getName();
+                    String md5Name = DigestUtils.md5Hex(jarInput.getFile().getAbsolutePath());
+                    if (jarName.endsWith(".jar")) {
+                        jarName = jarName.substring(0, jarName.length() - 4);
+                    }
+                    File dest = outputProvider.getContentLocation(jarName + md5Name, jarInput.getContentTypes(), jarInput.getScopes(), Format.JAR);
+
+                    final String inputClassPath = jarInput.getFile().getAbsolutePath();
+                    classPool.insertClassPath(inputClassPath);
+                    if (isIncremental) {
                         switch (status) {
                             case NOTCHANGED:
                                 break;
-                            case REMOVED:
-                                if (destFile.exists()) {
-                                    FileUtils.forceDelete(destFile);
-                                }
-                                break;
                             case ADDED:
                             case CHANGED:
-                                FileUtils.touch(destFile);
-                                transformClassFileExecutor.execute(() ->
-                                        transformFileInner(inputClassPath, inputFile, destFile));
+                                transformJarInner(jarInput.getFile(), dest);
+                                break;
+                            case REMOVED:
+                                if (dest.exists()) {
+                                    FileUtils.forceDelete(dest);
+                                }
                                 break;
                         }
+                    } else {
+                        transformJarInner(jarInput.getFile(), dest);
                     }
-                } else {
-                    if (directoryInput.getFile().isDirectory()) {
-                        for (File inputFile : com.android.utils.FileUtils.getAllFiles(directoryInput.getFile())) {
-                            String inputFilePath = inputFile.getAbsolutePath();
-                            transformClassFileExecutor.execute(() ->
-                                    transformFileInner(inputClassPath, inputFile,
-                                            new File(inputFilePath.replace(inputClassPath, destDirPath))));
+                }
+            }
+            for (TransformInput input : inputs) {
+                for (DirectoryInput directoryInput : input.getDirectoryInputs()) {
+                    File dest = outputProvider.getContentLocation(
+                            directoryInput.getName(),
+                            directoryInput.getContentTypes(),
+                            directoryInput.getScopes(),
+                            Format.DIRECTORY);
+                    FileUtils.forceMkdir(dest);
+                    final String inputClassPath = directoryInput.getFile().getAbsolutePath();
+                    final String destDirPath = dest.getAbsolutePath();
+                    classPool.insertClassPath(inputClassPath);
+                    if (isIncremental) {
+                        Map<File, Status> fileStatusMap = directoryInput.getChangedFiles();
+                        for (Map.Entry<File, Status> changedFile : fileStatusMap.entrySet()) {
+                            Status status = changedFile.getValue();
+                            File inputFile = changedFile.getKey();
+                            String destFilePath = inputFile.getAbsolutePath().replace(inputClassPath, destDirPath);
+                            File destFile = new File(destFilePath);
+                            switch (status) {
+                                case NOTCHANGED:
+                                    break;
+                                case REMOVED:
+                                    if (destFile.exists()) {
+                                        FileUtils.forceDelete(destFile);
+                                    }
+                                    break;
+                                case ADDED:
+                                case CHANGED:
+                                    FileUtils.touch(destFile);
+                                    transformFileInner(inputClassPath, inputFile, destFile);
+                                    break;
+                            }
+                        }
+                    } else {
+                        if (directoryInput.getFile().isDirectory()) {
+                            for (File inputFile : com.android.utils.FileUtils.getAllFiles(directoryInput.getFile())) {
+                                String inputFilePath = inputFile.getAbsolutePath();
+                                transformFileInner(inputClassPath, inputFile,
+                                        new File(inputFilePath.replace(inputClassPath, destDirPath)));
+                            }
                         }
                     }
                 }
             }
-        }
-        transformClassFileExecutor.shutdown();
-        try {
+            transformClassFileExecutor.shutdown();
             transformClassFileExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MINUTES);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            println(e);
         }
     }
 
 
     private void transformFileInner(String inputClassPath, File inputFile, File outputFile) {
-        String inputFilePath = inputFile.getAbsolutePath();
-        if (isClassFile(inputFilePath)) {
-            try {
-                printlnIfDebug("transformFileInner:" + inputFile.getAbsolutePath());
-                transformClassFile(inputClassPath, inputFile, outputFile);
-            } catch (Exception e) {
-                println("Exception!!! transformFileInner fail," + e.toString());
+//        transformClassFileExecutor.execute(() -> {
+            String inputFilePath = inputFile.getAbsolutePath();
+            if (isClassFile(inputFilePath)) {
+                try {
+                    printlnIfDebug("transformFileInner:" + inputFile.getAbsolutePath());
+                    transformClassFile(inputClassPath, inputFile, outputFile);
+                } catch (Exception e) {
+                    println(e);
+                }
             }
-        }
-        try {
-            FileUtils.copyFile(inputFile, outputFile);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+            try {
+                FileUtils.copyFile(inputFile, outputFile);
+            } catch (IOException e) {
+                println(e);
+            }
+//        });
     }
 
-    private void transformJarInner(String inputClassPath, File inputFile, File outputFile) {
-        try {
-            ClassPath classPath = insertClassPath(inputClassPath);
-            if (classPath != null) {
+    private void transformJarInner(File inputFile, File outputFile) {
+//        transformClassFileExecutor.execute(() -> {
+            try {
                 printlnIfDebug("transformJarInner:" + inputFile.getAbsolutePath());
                 ZipFile inputZip = new ZipFile(inputFile);
                 Enumeration inEntries = inputZip.entries();
@@ -212,17 +210,28 @@ public abstract class JavassistTransform extends Transform {
                             .replace("/", ".");
                     transformJarClassFile(className);
                 }
+            } catch (Exception e) {
+                println(e);
+            } finally {
+                try {
+                    FileUtils.copyFile(inputFile, outputFile);
+                } catch (IOException e) {
+                    println(e);
+                }
             }
-        } catch (Exception e) {
-            println("Exception!!! transformJarInner fail," + e.toString());
-        } finally {
-            try {
-                FileUtils.copyFile(inputFile, outputFile);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+//        });
+    }
+
+    private void printlnIfDebug(Object log) {
+        if (isLogEnable()) {
+            println(log);
         }
     }
+
+    private void println(Object log) {
+        LogUtil.println(log);
+    }
+
 
     private boolean isClassFile(String filePath) {
         return filePath.endsWith(SdkConstants.DOT_CLASS)
@@ -231,14 +240,6 @@ public abstract class JavassistTransform extends Transform {
                 && !filePath.contains("BuildConfig.class");
     }
 
-    private ClassPath insertClassPath(String path) {
-        try {
-            return classPool.insertClassPath(path);
-        } catch (NotFoundException e) {
-            printlnIfDebug("insertClassPath fail," + e.toString());
-            return null;
-        }
-    }
 
     protected CtClass getCtClass(String inputClassPath, File classFile) {
         String classFilePath = classFile.getAbsolutePath();
@@ -256,34 +257,19 @@ public abstract class JavassistTransform extends Transform {
 
     protected CtClass getCtClass(String className) {
         try {
-            CtClass ctClass = classPool.getCtClass(className);
-            return ctClass;
+            return classPool.getCtClass(className);
         } catch (NotFoundException e) {
-            println("getCtClass fail," + e.toString());
+            println(e);
         }
         return null;
     }
 
 
-    protected void printlnIfDebug(Object log) {
-        if (isLogEnable()) {
-            println(log);
-        }
-    }
-
-    protected void println(Object log) {
-        System.out.println(LogUtil.toString(log));
-    }
-
     protected boolean isLogEnable() {
         return false;
     }
 
-    protected void transformClassFile(String inputClassPath, File inputFile, File outputFile) throws Exception {
+    protected abstract void transformClassFile(String inputClassPath, File inputFile, File outputFile) throws Exception;
 
-    }
-
-    protected void transformJarClassFile(String className) throws Exception {
-
-    }
+    protected abstract void transformJarClassFile(String className) throws Exception;
 }

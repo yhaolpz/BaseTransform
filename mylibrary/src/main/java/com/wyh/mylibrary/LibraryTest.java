@@ -9,5 +9,11 @@ public class LibraryTest {
     @Aop
     public void test() {
 
+//        new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                Log.d("test", "run: ");
+//            }
+//        });
     }
 }

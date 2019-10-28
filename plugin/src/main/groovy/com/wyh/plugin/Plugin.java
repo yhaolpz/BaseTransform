@@ -16,8 +16,8 @@ public class Plugin implements org.gradle.api.Plugin<Project> {
     public void apply(Project project) {
         if (project.getPlugins().hasPlugin(AppPlugin.class)) {
             AppExtension appExtension = (AppExtension) project.getProperties().get("android");
-            appExtension.registerTransform(new CustomTransform(project), Collections.EMPTY_LIST);
-            System.out.println("Plugin apply and registerTransform CustomTransform");
+            appExtension.registerTransform(new LogTransform(project), Collections.EMPTY_LIST);
+            System.out.println("Plugin apply and registerTransform");
         } else {
             System.out.println("error! Plug in must be applied in app");
         }

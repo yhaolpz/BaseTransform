@@ -1,4 +1,4 @@
-package com.wyh.mylibrary;
+package com.wyh.test;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

@@ -1,5 +1,8 @@
 package com.wyh.plugin;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 
 /**
@@ -14,7 +17,7 @@ public class LogUtil {
      * @param obj 实例，可直接格式数组、集合类型输出
      * @return 转换后的字符串
      */
-    public static String toString( Object obj) {
+    public static String toString(Object obj) {
         if (obj == null) {
             return "null";
         }
@@ -49,6 +52,39 @@ public class LogUtil {
             return Arrays.deepToString((Object[]) obj);
         }
         return "Couldn't find a correct type for the object";
+    }
+
+    /**
+     * 将异常转为字符串
+     *
+     * @param tr 异常
+     * @return 转换后的字符串
+     */
+    public static String getStackTraceString(Throwable tr) {
+        if (tr == null) {
+            return "";
+        }
+        Throwable t = tr;
+        while (t != null) {
+            if (t instanceof UnknownHostException) {
+                return "";
+            }
+            t = t.getCause();
+        }
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        tr.printStackTrace(pw);
+        pw.flush();
+        return sw.toString();
+    }
+
+
+    public static void println(Object log) {
+        if (log instanceof Throwable) {
+            System.out.println(LogUtil.getStackTraceString((Throwable) log));
+        } else {
+            System.out.println(LogUtil.toString(log));
+        }
     }
 
 }

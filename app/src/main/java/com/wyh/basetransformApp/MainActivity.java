@@ -2,11 +2,12 @@ package com.wyh.basetransformApp;
 
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
-import com.wyh.mylibrary.LibraryTest;
+import com.wyh.test.Test;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -24,10 +25,22 @@ public class MainActivity extends AppCompatActivity {
         mButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Toast.makeText(MainActivity.this, "hahaha", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "onClick", Toast.LENGTH_SHORT).show();
+
+                Test test = new Test();
+                Test.test();
+                test.test2();
+
             }
         });
+//
+//        mButton.setOnLongClickListener(new View.OnLongClickListener() {
+//            @Override
+//            public boolean onLongClick(View v) {
+//                Toast.makeText(MainActivity.this, "onLongClick", Toast.LENGTH_SHORT).show();
+//                return false;
+//            }
+//        });
 
-        new LibraryTest();
     }
 }
