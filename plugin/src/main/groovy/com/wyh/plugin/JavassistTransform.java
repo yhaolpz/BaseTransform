@@ -197,22 +197,24 @@ public abstract class JavassistTransform extends Transform implements IJavassist
 
 
     private void transformFileInner(String inputClassPath, File dirFile, File inputFile, File outputFile) {
-        if (tryTransformDirClassFile(dirFile, inputFile)) {
+        transformClassFileExecutor.execute(() -> {
+            if (tryTransformDirClassFile(dirFile, inputFile)) {
+                try {
+                    CtClass ctClass = getCtClass(inputClassPath, inputFile);
+                    println("transformDirClassFile:" + ctClass.getName());
+                    transformDirClassFile(ctClass);
+                    ctClass.writeFile(inputClassPath);
+                    ctClass.detach();
+                } catch (Exception e) {
+                    println(e);
+                }
+            }
             try {
-                CtClass ctClass = getCtClass(inputClassPath, inputFile);
-                println("transformFileInner:" + ctClass.getName());
-                transformDirClassFile(ctClass);
-                ctClass.writeFile(inputClassPath);
-                ctClass.detach();
-            } catch (Exception e) {
+                FileUtils.copyFile(inputFile, outputFile);
+            } catch (IOException e) {
                 println(e);
             }
-        }
-        try {
-            FileUtils.copyFile(inputFile, outputFile);
-        } catch (IOException e) {
-            println(e);
-        }
+        });
     }
 
 
@@ -227,11 +229,16 @@ public abstract class JavassistTransform extends Transform implements IJavassist
                 ZipEntry outEntry = new ZipEntry(entry.getName());
                 byte[] newEntryContent;
                 if (tryTransformJarClassFile(inputJarFile, outEntry.getName())) {
-                    CtClass ctClass = classPool.makeClass(originalFile);
-                    println("transformJarInner:" + ctClass.getName());
-                    transformJarClassFile(ctClass);
-                    newEntryContent = ctClass.toBytecode();
-                    ctClass.detach();
+                    try {
+                        CtClass ctClass = classPool.makeClass(originalFile, false);
+                        println("transformJarClassFile:" + ctClass.getName());
+                        transformJarClassFile(ctClass);
+                        newEntryContent = ctClass.toBytecode();
+                        ctClass.detach();
+                    } catch (RuntimeException e) {
+                        e.printStackTrace();
+                        newEntryContent = IOUtils.toByteArray(originalFile);
+                    }
                 } else {
                     newEntryContent = IOUtils.toByteArray(originalFile);
                 }
