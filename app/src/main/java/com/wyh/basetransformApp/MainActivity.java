@@ -1,18 +1,19 @@
 package com.wyh.basetransformApp;
 
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+
+import com.wyh.mylibrary.LibraryTest;
 import com.wyh.test.Test;
 
 public class MainActivity extends AppCompatActivity {
 
     private Button mButton;
-
 
 
     @Override
@@ -27,9 +28,9 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 Toast.makeText(MainActivity.this, "onClick", Toast.LENGTH_SHORT).show();
 
-                Test test = new Test();
-                Test.test();
-                test.test2();
+                new Test().test();
+
+                new LibraryTest().test();
 
             }
         });
@@ -41,6 +42,11 @@ public class MainActivity extends AppCompatActivity {
 //                return false;
 //            }
 //        });
+
+    }
+
+    @NonNull
+    public void test() {
 
     }
 }
