@@ -28,11 +28,6 @@ public class LogTransform extends JavassistTransform {
         return "LogTransform";
     }
 
-    @Override
-    protected boolean isLogEnable() {
-        return true;
-    }
-
 
     @Override
     public boolean tryTransformDirClassFile(File dirFile, File classFile) {
@@ -67,7 +62,11 @@ public class LogTransform extends JavassistTransform {
         CtMethod[] methods = ctClass.getDeclaredMethods();
         for (CtMethod method : methods) {
             if (CtClassUtil.hasAnnotation(method, ANNOTATION_AOP)) {
-                method.insertBefore("android.util.Log.d(\"" + ctClass.getSimpleName() + "\",\"LogTransform------>logMethod\");");
+                method.addLocalVariable("_LogTransform_method_time", CtClass.longType);
+                method.insertBefore("_LogTransform_method_time = java.lang.System.currentTimeMillis();");
+                method.insertAfter("_LogTransform_method_time = java.lang.System.currentTimeMillis()-_LogTransform_method_time;");
+                method.insertAfter("android.util.Log.d(\"" + ctClass.getSimpleName() + ":" + method.getName() + "\"," +
+                        "\"time:\"+_LogTransform_method_time);");
             }
         }
     }

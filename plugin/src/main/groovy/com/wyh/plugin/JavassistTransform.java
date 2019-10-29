@@ -42,6 +42,8 @@ import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.NotFoundException;
 
+import static com.wyh.plugin.LogUtil.println;
+
 /**
  * @author WangYingHao
  * @since 2019-10-23
@@ -51,7 +53,7 @@ public abstract class JavassistTransform extends Transform implements IJavassist
     private static final FileTime ZERO = FileTime.fromMillis(0L);
 
 
-    protected ClassPool classPool;
+    private ClassPool classPool;
     private ExecutorService transformClassFileExecutor;
     private Project project;
 
@@ -196,17 +198,14 @@ public abstract class JavassistTransform extends Transform implements IJavassist
 
     private void transformFileInner(String inputClassPath, File dirFile, File inputFile, File outputFile) {
         if (tryTransformDirClassFile(dirFile, inputFile)) {
-            String inputFilePath = inputFile.getAbsolutePath();
-            if (isClassFile(inputFilePath)) {
-                try {
-                    printlnIfDebug("transformFileInner:" + inputFile.getAbsolutePath());
-                    CtClass ctClass = getCtClass(inputClassPath, inputFile);
-                    transformDirClassFile(ctClass);
-                    ctClass.writeFile(inputClassPath);
-                    ctClass.detach();
-                } catch (Exception e) {
-                    println(e);
-                }
+            try {
+                CtClass ctClass = getCtClass(inputClassPath, inputFile);
+                println("transformFileInner:" + ctClass.getName());
+                transformDirClassFile(ctClass);
+                ctClass.writeFile(inputClassPath);
+                ctClass.detach();
+            } catch (Exception e) {
+                println(e);
             }
         }
         try {
@@ -229,6 +228,7 @@ public abstract class JavassistTransform extends Transform implements IJavassist
                 byte[] newEntryContent;
                 if (tryTransformJarClassFile(inputJarFile, outEntry.getName())) {
                     CtClass ctClass = classPool.makeClass(originalFile);
+                    println("transformJarInner:" + ctClass.getName());
                     transformJarClassFile(ctClass);
                     newEntryContent = ctClass.toBytecode();
                     ctClass.detach();
@@ -256,26 +256,7 @@ public abstract class JavassistTransform extends Transform implements IJavassist
     }
 
 
-    private void printlnIfDebug(Object log) {
-        if (isLogEnable()) {
-            println(log);
-        }
-    }
-
-    private void println(Object log) {
-        LogUtil.println(log);
-    }
-
-
-    private boolean isClassFile(String filePath) {
-        return filePath.endsWith(SdkConstants.DOT_CLASS)
-                && !filePath.contains("R$")
-                && !filePath.contains("R.class")
-                && !filePath.contains("BuildConfig.class");
-    }
-
-
-    protected CtClass getCtClass(String inputClassPath, File inputClassFile) {
+    private CtClass getCtClass(String inputClassPath, File inputClassFile) {
         String classFilePath = inputClassFile.getAbsolutePath();
         String className =
                 classFilePath.replace(inputClassPath, "")
@@ -289,7 +270,7 @@ public abstract class JavassistTransform extends Transform implements IJavassist
     }
 
 
-    protected CtClass getCtClass(String className) {
+    private CtClass getCtClass(String className) {
         try {
             return classPool.getCtClass(className);
         } catch (NotFoundException e) {
@@ -298,9 +279,5 @@ public abstract class JavassistTransform extends Transform implements IJavassist
         return null;
     }
 
-
-    protected boolean isLogEnable() {
-        return false;
-    }
 
 }

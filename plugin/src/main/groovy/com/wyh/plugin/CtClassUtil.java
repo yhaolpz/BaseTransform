@@ -11,11 +11,13 @@ import javassist.CtMethod;
 public class CtClassUtil {
 
 
+    /**
+     * 方法上是否有某注解
+     */
     public static boolean hasAnnotation(CtMethod ctMethod, String annotation) throws ClassNotFoundException {
         Object[] annotations = ctMethod.getAnnotations();
         if (annotations != null) {
             for (Object annotation1 : annotations) {
-                LogUtil.println(annotation1);
                 if (Objects.equals(annotation, annotation1.toString())) {
                     return true;
                 }
@@ -23,4 +25,5 @@ public class CtClassUtil {
         }
         return false;
     }
+
 }
