@@ -9,6 +9,7 @@ import java.io.File;
 import javassist.CannotCompileException;
 import javassist.CtClass;
 import javassist.CtMethod;
+import javassist.NotFoundException;
 
 /**
  * @author WangYingHao
@@ -57,7 +58,7 @@ public class LogTransform extends JavassistTransform {
         logMethod(ctClass);
     }
 
-    private void logMethod(CtClass ctClass) throws ClassNotFoundException, CannotCompileException {
+    private void logMethod(CtClass ctClass) throws CannotCompileException, NotFoundException {
         ctClass.defrost();
         CtMethod[] methods = ctClass.getDeclaredMethods();
         for (CtMethod method : methods) {
