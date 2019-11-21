@@ -1,4 +1,4 @@
-package com.wyh.plugin;
+package com.wyh.plugin.javassist;
 
 import com.android.SdkConstants;
 import com.android.build.api.transform.DirectoryInput;
@@ -30,9 +30,6 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -42,25 +39,22 @@ import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.NotFoundException;
 
-import static com.wyh.plugin.LogUtil.println;
+import static com.wyh.plugin.javassist.LogUtil.println;
 
 /**
  * @author WangYingHao
  * @since 2019-10-23
  */
-public abstract class JavassistTransform extends Transform implements IJavassistTransform {
+public abstract class BaseTransform extends Transform implements ITransform {
 
     private static final FileTime ZERO = FileTime.fromMillis(0L);
 
-
     private ClassPool classPool;
-    private ExecutorService transformClassFileExecutor;
     private Project project;
 
-    public JavassistTransform(Project project) {
+    public BaseTransform(Project project) {
         this.project = project;
         classPool = ClassPool.getDefault();
-        transformClassFileExecutor = Executors.newFixedThreadPool(20);
     }
 
     @Override
@@ -86,71 +80,45 @@ public abstract class JavassistTransform extends Transform implements IJavassist
     @Override
     public void transform(TransformInvocation transformInvocation) {
         try {
-            final Collection<TransformInput> inputs = transformInvocation.getInputs();
-            final TransformOutputProvider outputProvider = transformInvocation.getOutputProvider();
-            final boolean isIncremental = transformInvocation.isIncremental();
+            final Collection<TransformInput> inputs = transformInvocation.getInputs(); //输入
+            final TransformOutputProvider outputProvider = transformInvocation.getOutputProvider(); //输出
+            final boolean isIncremental = transformInvocation.isIncremental(); //是否是增量模式编译
             if (!isIncremental) {
-                outputProvider.deleteAll();
+                outputProvider.deleteAll(); //若不是增量模式编译则清空输出文件
             }
             AppExtension appExtension = (AppExtension) project.getProperties().get("android");
             List<File> bootClassPaths = appExtension.getBootClasspath();
             if (bootClassPaths != null) {
                 for (File bootDir : bootClassPaths) {
-                    classPool.appendClassPath(bootDir.getAbsolutePath());
+                    classPool.appendClassPath(bootDir.getAbsolutePath()); //类查找路径添加根目录
                 }
             }
             for (TransformInput input : inputs) {
                 for (JarInput jarInput : input.getJarInputs()) {
                     final String inputClassPath = jarInput.getFile().getAbsolutePath();
-                    classPool.insertClassPath(inputClassPath);
+                    classPool.insertClassPath(inputClassPath); //类查找路径添加每个 jar 路径
                 }
             }
             for (TransformInput input : inputs) {
                 for (JarInput jarInput : input.getJarInputs()) {
-                    transformInput(jarInput, outputProvider, isIncremental);
+                    transformInput(jarInput, outputProvider, isIncremental); //处理 jar 文件
                 }
                 for (DirectoryInput directoryInput : input.getDirectoryInputs()) {
-                    transformInput(directoryInput, outputProvider, isIncremental);
+                    transformInput(directoryInput, outputProvider, isIncremental); //处理源码文件夹
                 }
             }
-            transformClassFileExecutor.shutdown();
-            transformClassFileExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MINUTES);
         } catch (Exception e) {
             println(e);
         }
     }
 
-    private void transformInput(JarInput jarInput, TransformOutputProvider outputProvider, boolean isIncremental)
-            throws IOException {
-        String jarName = jarInput.getName();
-        String md5Name = DigestUtils.md5Hex(jarInput.getFile().getAbsolutePath());
-        if (jarName.endsWith(".jar")) {
-            jarName = jarName.substring(0, jarName.length() - 4);
-        }
-        File dest = outputProvider.getContentLocation(
-                jarName + md5Name,
-                jarInput.getContentTypes(),
-                jarInput.getScopes(),
-                Format.JAR);
-        if (isIncremental) {
-            switch (jarInput.getStatus()) {
-                case NOTCHANGED:
-                    break;
-                case ADDED:
-                case CHANGED:
-                    transformJarInner(jarInput.getFile(), dest);
-                    break;
-                case REMOVED:
-                    if (dest.exists()) {
-                        FileUtils.forceDelete(dest);
-                    }
-                    break;
-            }
-        } else {
-            transformJarInner(jarInput.getFile(), dest);
-        }
-    }
-
+    /**
+     * 处理源码文件夹
+     *
+     * @param directoryInput 输入的源码文件夹
+     * @param outputProvider 输出信息
+     * @param isIncremental  是否是增量模式编译
+     */
     private void transformInput(DirectoryInput directoryInput, TransformOutputProvider outputProvider, boolean isIncremental)
             throws IOException, NotFoundException {
         File dest = outputProvider.getContentLocation(
@@ -195,7 +163,14 @@ public abstract class JavassistTransform extends Transform implements IJavassist
         }
     }
 
-
+    /**
+     * 进一步处理源码文件夹里的某个类文件
+     *
+     * @param inputClassPath 所在源码文件夹的类查找路径
+     * @param dirFile        所在源码文件夹
+     * @param inputFile      类文件
+     * @param outputFile     处理后的输出文件
+     */
     private void transformFileInner(String inputClassPath, File dirFile, File inputFile, File outputFile) {
         if (tryTransformDirClassFile(dirFile, inputFile)) {
             try {
@@ -215,51 +190,108 @@ public abstract class JavassistTransform extends Transform implements IJavassist
         }
     }
 
-
-    private void transformJarInner(File inputJarFile, File outputJarFile) {
-        try {
-            ZipFile inputZip = new ZipFile(inputJarFile);
-            ZipOutputStream outputZip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(outputJarFile.toPath())));
-            Enumeration inEntries = inputZip.entries();
-            while (inEntries.hasMoreElements()) {
-                ZipEntry entry = (ZipEntry) inEntries.nextElement();
-                InputStream originalFile = new BufferedInputStream(inputZip.getInputStream(entry));
-                ZipEntry outEntry = new ZipEntry(entry.getName());
-                byte[] newEntryContent;
-                if (tryTransformJarClassFile(inputJarFile, outEntry.getName())) {
-                    try {
-                        CtClass ctClass = classPool.makeClass(originalFile, false);
-                        println("transformJarClassFile:" + ctClass.getName());
-                        transformJarClassFile(ctClass);
-                        newEntryContent = ctClass.toBytecode();
-                    } catch (RuntimeException e) {
-                        e.printStackTrace();
-                        newEntryContent = IOUtils.toByteArray(originalFile);
+    /**
+     * 处理 jar 文件
+     *
+     * @param jarInput       输入的 jar
+     * @param outputProvider 输出信息
+     * @param isIncremental  是否是增量模式编译
+     */
+    private void transformInput(JarInput jarInput, TransformOutputProvider outputProvider, boolean isIncremental)
+            throws IOException {
+        String jarName = jarInput.getName();
+        String md5Name = DigestUtils.md5Hex(jarInput.getFile().getAbsolutePath());
+        if (jarName.endsWith(".jar")) {
+            jarName = jarName.substring(0, jarName.length() - 4);
+        }
+        File dest = outputProvider.getContentLocation(
+                jarName + md5Name,
+                jarInput.getContentTypes(),
+                jarInput.getScopes(),
+                Format.JAR);
+        if (isIncremental) {
+            switch (jarInput.getStatus()) {
+                case NOTCHANGED:
+                    break;
+                case ADDED:
+                case CHANGED:
+                    transformJarInner(jarInput.getFile(), dest);
+                    break;
+                case REMOVED:
+                    if (dest.exists()) {
+                        FileUtils.forceDelete(dest);
                     }
-                } else {
-                    newEntryContent = IOUtils.toByteArray(originalFile);
-                }
-                CRC32 crc32 = new CRC32();
-                crc32.update(newEntryContent);
-                outEntry.setCrc(crc32.getValue());
-                outEntry.setMethod(0);
-                outEntry.setSize((long) newEntryContent.length);
-                outEntry.setCompressedSize((long) newEntryContent.length);
-                outEntry.setLastAccessTime(ZERO);
-                outEntry.setLastModifiedTime(ZERO);
-                outEntry.setCreationTime(ZERO);
-                outputZip.putNextEntry(outEntry);
-                outputZip.write(newEntryContent);
-                outputZip.closeEntry();
+                    break;
             }
-            outputZip.flush();
-            outputZip.close();
-        } catch (Exception e) {
-            e.printStackTrace();
+        } else {
+            transformJarInner(jarInput.getFile(), dest);
         }
     }
 
+    /**
+     * 进一步处理 jar 文件
+     *
+     * @param inputJarFile  要处理的 jar 文件
+     * @param outputJarFile 处理后的输出文件
+     */
+    private void transformJarInner(File inputJarFile, File outputJarFile) {
+        if (tryTransformJarFile(inputJarFile)) {
+            try {
+                ZipFile inputZip = new ZipFile(inputJarFile);
+                ZipOutputStream outputZip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(outputJarFile.toPath())));
+                Enumeration inEntries = inputZip.entries();
+                while (inEntries.hasMoreElements()) {
+                    ZipEntry entry = (ZipEntry) inEntries.nextElement();
+                    InputStream originalFile = new BufferedInputStream(inputZip.getInputStream(entry));
+                    ZipEntry outEntry = new ZipEntry(entry.getName());
+                    byte[] newEntryContent;
+                    if (tryTransformJarClassFile(inputJarFile, outEntry.getName())) {
+                        try {
+                            CtClass ctClass = classPool.makeClass(originalFile, false);
+                            println("transformJarClassFile:" + ctClass.getName());
+                            transformJarClassFile(ctClass);
+                            newEntryContent = ctClass.toBytecode();
+                        } catch (RuntimeException e) {
+                            e.printStackTrace();
+                            newEntryContent = IOUtils.toByteArray(originalFile);
+                        }
+                    } else {
+                        newEntryContent = IOUtils.toByteArray(originalFile);
+                    }
+                    CRC32 crc32 = new CRC32();
+                    crc32.update(newEntryContent);
+                    outEntry.setCrc(crc32.getValue());
+                    outEntry.setMethod(0);
+                    outEntry.setSize((long) newEntryContent.length);
+                    outEntry.setCompressedSize((long) newEntryContent.length);
+                    outEntry.setLastAccessTime(ZERO);
+                    outEntry.setLastModifiedTime(ZERO);
+                    outEntry.setCreationTime(ZERO);
+                    outputZip.putNextEntry(outEntry);
+                    outputZip.write(newEntryContent);
+                    outputZip.closeEntry();
+                }
+                outputZip.flush();
+                outputZip.close();
+                inputZip.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else {
+            try {
+                FileUtils.copyFile(inputJarFile, outputJarFile);
+            } catch (IOException e) {
+                println(e);
+            }
+        }
+    }
 
+    /**
+     * 获取 CtClass
+     *
+     * @param inputClassPath 所在类查找路径
+     * @param inputClassFile 类文件
+     */
     private CtClass getCtClass(String inputClassPath, File inputClassFile) {
         String classFilePath = inputClassFile.getAbsolutePath();
         String className =
@@ -273,7 +305,11 @@ public abstract class JavassistTransform extends Transform implements IJavassist
         return getCtClass(className);
     }
 
-
+    /**
+     * 获取 CtClass
+     *
+     * @param className 类名
+     */
     private CtClass getCtClass(String className) {
         try {
             return classPool.getCtClass(className);
@@ -282,6 +318,5 @@ public abstract class JavassistTransform extends Transform implements IJavassist
         }
         return null;
     }
-
 
 }

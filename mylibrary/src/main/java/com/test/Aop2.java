@@ -16,5 +16,5 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.CLASS)
 public @interface Aop2 {
     //todo 注解中如果有枚举属性，就会在调用获取方法上的枚举方法时报 classNotFoundException 错误
-    Mode mode() default Mode.LOW;
+//    Mode mode() default Mode.LOW;
 }

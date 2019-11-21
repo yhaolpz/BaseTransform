@@ -1,2 +1,4 @@
-include ':app', ':plugin', ':mylibrary'
+include ':app'
+include ':plugin'
+include ':mylibrary'
 rootProject.name='BaseTransform'

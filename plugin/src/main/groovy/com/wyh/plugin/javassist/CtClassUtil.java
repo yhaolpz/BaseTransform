@@ -1,4 +1,4 @@
-package com.wyh.plugin;
+package com.wyh.plugin.javassist;
 
 import java.util.Objects;
 

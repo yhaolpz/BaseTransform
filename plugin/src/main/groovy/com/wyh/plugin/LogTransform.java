@@ -1,6 +1,8 @@
 package com.wyh.plugin;
 
 import com.android.SdkConstants;
+import com.wyh.plugin.javassist.BaseTransform;
+import com.wyh.plugin.javassist.CtClassUtil;
 
 import org.gradle.api.Project;
 
@@ -15,7 +17,7 @@ import javassist.NotFoundException;
  * @author WangYingHao
  * @since 2019-10-28
  */
-public class LogTransform extends JavassistTransform {
+public class LogTransform extends BaseTransform {
 
     private static final String ANNOTATION_AOP = "@com.test.Aop";
 
@@ -42,6 +44,11 @@ public class LogTransform extends JavassistTransform {
     @Override
     public void transformDirClassFile(CtClass ctClass) throws Exception {
         logMethod(ctClass);
+    }
+
+    @Override
+    public boolean tryTransformJarFile(File jarFile) {
+        return true;
     }
 
     @Override

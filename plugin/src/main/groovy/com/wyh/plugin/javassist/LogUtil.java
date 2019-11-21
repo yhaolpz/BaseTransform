@@ -1,4 +1,4 @@
-package com.wyh.plugin;
+package com.wyh.plugin.javassist;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -6,8 +6,8 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 
 /**
- * Created by wyh on 2019/3/20.
- * 日志消息相关处理
+ * @author WangYingHao
+ * @since 2019-10-23
  */
 public class LogUtil {
 
