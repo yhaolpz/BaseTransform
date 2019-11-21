@@ -1,4 +1,4 @@
-package com.wyh.plugin.javassist;
+package com.wyh.ssist;
 
 import com.android.SdkConstants;
 import com.android.build.api.transform.DirectoryInput;
@@ -39,7 +39,7 @@ import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.NotFoundException;
 
-import static com.wyh.plugin.javassist.LogUtil.println;
+import static com.wyh.ssist.LogUtil.println;
 
 /**
  * @author WangYingHao
@@ -242,7 +242,8 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 Enumeration inEntries = inputZip.entries();
                 while (inEntries.hasMoreElements()) {
                     ZipEntry entry = (ZipEntry) inEntries.nextElement();
-                    InputStream originalFile = new BufferedInputStream(inputZip.getInputStream(entry));
+                    InputStream inputStream = inputZip.getInputStream(entry);
+                    InputStream originalFile = new BufferedInputStream(inputStream);
                     ZipEntry outEntry = new ZipEntry(entry.getName());
                     byte[] newEntryContent;
                     if (tryTransformJarClassFile(inputJarFile, outEntry.getName())) {
@@ -258,6 +259,8 @@ public abstract class BaseTransform extends Transform implements ITransform {
                     } else {
                         newEntryContent = IOUtils.toByteArray(originalFile);
                     }
+                    IOUtil.closeQuietly(originalFile);
+                    IOUtil.closeQuietly(inputStream);
                     CRC32 crc32 = new CRC32();
                     crc32.update(newEntryContent);
                     outEntry.setCrc(crc32.getValue());
@@ -272,8 +275,8 @@ public abstract class BaseTransform extends Transform implements ITransform {
                     outputZip.closeEntry();
                 }
                 outputZip.flush();
-                outputZip.close();
-                inputZip.close();
+                IOUtil.closeQuietly(outputZip);
+                IOUtil.closeQuietly(inputZip);
             } catch (Exception e) {
                 e.printStackTrace();
             }

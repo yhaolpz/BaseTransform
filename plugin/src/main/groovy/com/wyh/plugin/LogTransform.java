@@ -1,8 +1,8 @@
 package com.wyh.plugin;
 
 import com.android.SdkConstants;
-import com.wyh.plugin.javassist.BaseTransform;
-import com.wyh.plugin.javassist.CtClassUtil;
+import com.wyh.ssist.BaseTransform;
+import com.wyh.ssist.CtClassUtil;
 
 import org.gradle.api.Project;
 
@@ -19,7 +19,7 @@ import javassist.NotFoundException;
  */
 public class LogTransform extends BaseTransform {
 
-    private static final String ANNOTATION_AOP = "@com.test.Aop";
+    private static final String ANNOTATION_AOP = "@com.wyh.test.Aop";
 
     public LogTransform(Project project) {
         super(project);
@@ -48,7 +48,7 @@ public class LogTransform extends BaseTransform {
 
     @Override
     public boolean tryTransformJarFile(File jarFile) {
-        return true;
+        return false;
     }
 
     @Override
@@ -73,7 +73,7 @@ public class LogTransform extends BaseTransform {
                 method.addLocalVariable("_LogTransform_method_time", CtClass.longType);
                 method.insertBefore("_LogTransform_method_time = java.lang.System.currentTimeMillis();");
                 method.insertAfter("_LogTransform_method_time = java.lang.System.currentTimeMillis()-_LogTransform_method_time;");
-                method.insertAfter("android.util.Log.d(\"" + ctClass.getSimpleName() + ":" + method.getName() + "\"," +
+                method.insertAfter("android.util.Log.d(\"[" + ctClass.getSimpleName() + "]:" + method.getName() + "\"," +
                         "\"time:\"+_LogTransform_method_time);");
             }
         }

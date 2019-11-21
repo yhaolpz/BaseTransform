@@ -1,4 +1,4 @@
-package com.wyh.plugin.javassist;
+package com.wyh.ssist;
 
 import java.io.File;
 

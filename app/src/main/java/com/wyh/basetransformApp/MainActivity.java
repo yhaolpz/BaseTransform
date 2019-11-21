@@ -8,7 +8,6 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.wyh.mylibrary.LibraryTest;
 import com.wyh.test.Test;
 
 public class MainActivity extends AppCompatActivity {
@@ -29,8 +28,6 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, "onClick", Toast.LENGTH_SHORT).show();
 
                 new Test().test();
-
-                new LibraryTest().test();
 
             }
         });

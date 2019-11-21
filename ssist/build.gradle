@@ -1,0 +1,22 @@
+apply plugin: 'java-library'
+
+dependencies {
+    api gradleApi() //gradle sdk
+    api localGroovy() //groovy sdk
+    api 'com.android.tools.build:gradle:3.5.2'
+    api 'com.android.tools.build:gradle-api:3.5.2'
+    api 'commons-io:commons-io:2.6'
+    api 'commons-codec:commons-codec:1.10'
+    api 'org.javassist:javassist:3.20.0-GA'
+}
+
+repositories {
+    google()
+    jcenter()
+    mavenCentral()
+}
+
+// JitPack Maven
+apply plugin: 'com.github.dcendents.android-maven'
+// Your Group
+group='com.github.yhaolpz'
