@@ -1,4 +1,3 @@
-include ':app'
-include ':ssist'
-//include ':plugin'
+include ':app', ':mylibrary'
+include ':plugin'
 rootProject.name='BaseTransform'
