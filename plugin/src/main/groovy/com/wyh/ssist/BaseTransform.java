@@ -85,23 +85,35 @@ public abstract class BaseTransform extends Transform implements ITransform {
     @Override
     public void transform(TransformInvocation transformInvocation) {
         try {
+            println("---start---");
             final Collection<TransformInput> inputs = transformInvocation.getInputs(); //输入
             final TransformOutputProvider outputProvider = transformInvocation.getOutputProvider(); //输出
             final boolean isIncremental = transformInvocation.isIncremental(); //是否是增量模式编译
-            if (!isIncremental) {
+            if (isIncremental) {
+                println("---isIncremental---");
+            } else {
+                println("---isNotIncremental---");
                 outputProvider.deleteAll(); //若不是增量模式编译则清空输出文件
             }
             AppExtension appExtension = (AppExtension) mProject.getProperties().get("android");
             List<File> bootClassPaths = appExtension.getBootClasspath();
             if (bootClassPaths != null) {
                 for (File bootDir : bootClassPaths) {
-                    mClassPathSet.add(mClassPool.appendClassPath(bootDir.getAbsolutePath())); //类查找路径添加根目录
+                    final String classPath = bootDir.getAbsolutePath();
+                    mClassPathSet.add(mClassPool.appendClassPath(classPath)); //类查找路径添加根目录
+                    println("appendClassPath : " + classPath);
                 }
             }
             for (TransformInput input : inputs) {
                 for (JarInput jarInput : input.getJarInputs()) {
-                    final String inputClassPath = jarInput.getFile().getAbsolutePath();
-                    mClassPathSet.add(mClassPool.insertClassPath(inputClassPath)); //类查找路径添加每个 jar 路径
+                    final String classPath = jarInput.getFile().getAbsolutePath();
+                    mClassPathSet.add(mClassPool.insertClassPath(classPath)); //类查找路径添加每个 jar 路径
+                    println("insertClassPath(jarInput) : " + classPath);
+                }
+                for (DirectoryInput directoryInput : input.getDirectoryInputs()) {
+                    String classPath = directoryInput.getFile().getAbsolutePath();
+                    mClassPathSet.add(mClassPool.insertClassPath(classPath)); //类查找路径添加每个源码文件夹
+                    println("insertClassPath(dirInput) : " + classPath);
                 }
             }
             for (TransformInput input : inputs) {
@@ -112,12 +124,19 @@ public abstract class BaseTransform extends Transform implements ITransform {
                     transformInput(directoryInput, outputProvider, isIncremental); //处理源码文件夹
                 }
             }
-            for (ClassPath classPath : mClassPathSet) {
-                mClassPool.removeClassPath(classPath); //移除所有的类查找路径，防止 clean Project 时发生 Failed to delete some children. This might happen because a process has files open or has its working directory set in the target directory
-            }
-            mClassPathSet.clear();
         } catch (Exception e) {
             println(e);
+        } finally {
+            for (ClassPath classPath : mClassPathSet) {
+                /*
+                 * 移除所有的类查找路径，防止 clean Project 时发生 Failed to delete some children :
+                 * This might happen because a process has files open or has its working directory set in the target directory
+                 */
+                mClassPool.removeClassPath(classPath);
+            }
+            mClassPathSet.clear();
+            println("---removeAllClassPath---");
+            println("---end---");
         }
     }
 
@@ -129,7 +148,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
      * @param isIncremental  是否是增量模式编译
      */
     private void transformInput(DirectoryInput directoryInput, TransformOutputProvider outputProvider, boolean isIncremental)
-            throws IOException, NotFoundException {
+            throws IOException {
         File dest = outputProvider.getContentLocation(
                 directoryInput.getName(),
                 directoryInput.getContentTypes(),
@@ -139,7 +158,6 @@ public abstract class BaseTransform extends Transform implements ITransform {
         File directoryInputFile = directoryInput.getFile();
         final String inputClassPath = directoryInputFile.getAbsolutePath();
         final String destDirPath = dest.getAbsolutePath();
-        mClassPathSet.add(mClassPool.insertClassPath(inputClassPath));
         if (isIncremental) {
             Map<File, Status> fileStatusMap = directoryInput.getChangedFiles();
             for (Map.Entry<File, Status> changedFile : fileStatusMap.entrySet()) {
@@ -219,6 +237,8 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 jarInput.getScopes(),
                 Format.JAR);
         if (isIncremental) {
+            //todo 记录 jar 处理数量打印
+            println("transformInput(jarInput)：jarName=" + jarName + " state：" + jarInput.getStatus().toString());
             switch (jarInput.getStatus()) {
                 case NOTCHANGED:
                     break;
@@ -262,7 +282,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
                             transformJarClassFile(ctClass);
                             newEntryContent = ctClass.toBytecode();
                         } catch (RuntimeException e) {
-                            e.printStackTrace();
+                            println(e);
                             newEntryContent = IOUtils.toByteArray(originalFile);
                         }
                     } else {
@@ -287,7 +307,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 IOUtil.closeQuietly(outputZip);
                 IOUtil.closeQuietly(inputZip);
             } catch (Exception e) {
-                e.printStackTrace();
+                println(e);
             }
         } else {
             try {

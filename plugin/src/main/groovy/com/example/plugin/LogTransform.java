@@ -19,7 +19,7 @@ import javassist.NotFoundException;
  */
 public class LogTransform extends BaseTransform {
 
-    private static final String ANNOTATION_AOP = "@com.wyh.test.Aop";
+    private static final String ANNOTATION_AOP = "@com.example.mylibrary.Aop";
 
     public LogTransform(Project project) {
         super(project);

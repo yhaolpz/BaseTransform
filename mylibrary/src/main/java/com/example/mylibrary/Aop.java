@@ -1,4 +1,4 @@
-package com.wyh.test;
+package com.example.mylibrary;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -15,4 +15,5 @@ import java.lang.annotation.Target;
         ElementType.CONSTRUCTOR})
 @Retention(RetentionPolicy.CLASS)
 public @interface Aop {
+    Mode mode = Mode.ONE;
 }

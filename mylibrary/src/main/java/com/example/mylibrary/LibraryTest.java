@@ -8,6 +8,7 @@ import android.util.Log;
  */
 public class LibraryTest {
 
+    @Aop
     public static void log() {
         Log.d("LibraryTest", "log: abc");
     }
