@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.attribute.FileTime;
 import java.util.Collection;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,6 +36,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
+import javassist.ClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.NotFoundException;
@@ -50,12 +52,14 @@ public abstract class BaseTransform extends Transform implements ITransform {
 
     private static final FileTime ZERO = FileTime.fromMillis(0L);
 
-    private ClassPool classPool;
-    private Project project;
+    private ClassPool mClassPool;
+    private Project mProject;
+    private Set<ClassPath> mClassPathSet;
 
     public BaseTransform(Project project) {
-        this.project = project;
-        classPool = ClassPool.getDefault();
+        this.mProject = project;
+        mClassPool = ClassPool.getDefault();
+        mClassPathSet = new HashSet<>();
     }
 
     @Override
@@ -87,17 +91,17 @@ public abstract class BaseTransform extends Transform implements ITransform {
             if (!isIncremental) {
                 outputProvider.deleteAll(); //若不是增量模式编译则清空输出文件
             }
-            AppExtension appExtension = (AppExtension) project.getProperties().get("android");
+            AppExtension appExtension = (AppExtension) mProject.getProperties().get("android");
             List<File> bootClassPaths = appExtension.getBootClasspath();
             if (bootClassPaths != null) {
                 for (File bootDir : bootClassPaths) {
-                    classPool.appendClassPath(bootDir.getAbsolutePath()); //类查找路径添加根目录
+                    mClassPathSet.add(mClassPool.appendClassPath(bootDir.getAbsolutePath())); //类查找路径添加根目录
                 }
             }
             for (TransformInput input : inputs) {
                 for (JarInput jarInput : input.getJarInputs()) {
                     final String inputClassPath = jarInput.getFile().getAbsolutePath();
-                    classPool.insertClassPath(inputClassPath); //类查找路径添加每个 jar 路径
+                    mClassPathSet.add(mClassPool.insertClassPath(inputClassPath)); //类查找路径添加每个 jar 路径
                 }
             }
             for (TransformInput input : inputs) {
@@ -108,6 +112,10 @@ public abstract class BaseTransform extends Transform implements ITransform {
                     transformInput(directoryInput, outputProvider, isIncremental); //处理源码文件夹
                 }
             }
+            for (ClassPath classPath : mClassPathSet) {
+                mClassPool.removeClassPath(classPath); //移除所有的类查找路径，防止 clean Project 时发生 Failed to delete some children. This might happen because a process has files open or has its working directory set in the target directory
+            }
+            mClassPathSet.clear();
         } catch (Exception e) {
             println(e);
         }
@@ -131,7 +139,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
         File directoryInputFile = directoryInput.getFile();
         final String inputClassPath = directoryInputFile.getAbsolutePath();
         final String destDirPath = dest.getAbsolutePath();
-        classPool.insertClassPath(inputClassPath);
+        mClassPathSet.add(mClassPool.insertClassPath(inputClassPath));
         if (isIncremental) {
             Map<File, Status> fileStatusMap = directoryInput.getChangedFiles();
             for (Map.Entry<File, Status> changedFile : fileStatusMap.entrySet()) {
@@ -205,20 +213,8 @@ public abstract class BaseTransform extends Transform implements ITransform {
         if (jarName.endsWith(".jar")) {
             jarName = jarName.substring(0, jarName.length() - 4);
         }
-        //fixme: Execution failed for task ':mylibrary:clean'.
-        //> Unable to delete directory 'C:\Users\yinghaowang\AndroidStudioProjects\BaseTransform\mylibrary\build'
-        //    Failed to delete some children. This might happen because a process has files open or has its working directory set in the target directory.
-        //    - C:\Users\yinghaowang\AndroidStudioProjects\BaseTransform\mylibrary\build\intermediates\runtime_library_classes\debug\classes.jar
-        //    - C:\Users\yinghaowang\AndroidStudioProjects\BaseTransform\mylibrary\build\intermediates\runtime_library_classes\debug
-        //    - C:\Users\yinghaowang\AndroidStudioProjects\BaseTransform\mylibrary\build\intermediates\runtime_library_classes
-        //    - C:\Users\yinghaowang\AndroidStudioProjects\BaseTransform\mylibrary\build\intermediates
-//        File dest = outputProvider.getContentLocation(
-//                jarName + md5Name,
-//                jarInput.getContentTypes(),
-//                jarInput.getScopes(),
-//                Format.JAR);
         File dest = outputProvider.getContentLocation(
-                jarInput.getName(),
+                jarName + md5Name,
                 jarInput.getContentTypes(),
                 jarInput.getScopes(),
                 Format.JAR);
@@ -261,7 +257,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
                     byte[] newEntryContent;
                     if (tryTransformJarClassFile(inputJarFile, outEntry.getName())) {
                         try {
-                            CtClass ctClass = classPool.makeClass(originalFile, false);
+                            CtClass ctClass = mClassPool.makeClass(originalFile, false);
                             println("transformJarClassFile:" + ctClass.getName());
                             transformJarClassFile(ctClass);
                             newEntryContent = ctClass.toBytecode();
@@ -328,7 +324,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
      */
     private CtClass getCtClass(String className) {
         try {
-            return classPool.getCtClass(className);
+            return mClassPool.getCtClass(className);
         } catch (NotFoundException e) {
             println(e);
         }

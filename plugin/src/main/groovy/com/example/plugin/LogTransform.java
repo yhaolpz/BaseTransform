@@ -48,7 +48,7 @@ public class LogTransform extends BaseTransform {
 
     @Override
     public boolean tryTransformJarFile(File jarFile) {
-        return false;
+        return true;
     }
 
     @Override
