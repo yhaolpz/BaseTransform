@@ -15,5 +15,5 @@ import java.lang.annotation.Target;
         ElementType.CONSTRUCTOR})
 @Retention(RetentionPolicy.CLASS)
 public @interface Aop {
-    Mode mode = Mode.ONE;
+//    Mode mode = Mode.ONE;
 }

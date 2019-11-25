@@ -11,6 +11,9 @@ import java.util.Arrays;
  */
 public class LogUtil {
 
+    public static String TAG = "[WYH]";
+    public static boolean ENABLE = false;
+
     /**
      * 将实例转换为字符串
      *
@@ -80,10 +83,12 @@ public class LogUtil {
 
 
     public static void println(Object log) {
-        if (log instanceof Throwable) {
-            System.out.println(LogUtil.getStackTraceString((Throwable) log));
-        } else {
-            System.out.println(LogUtil.toString(log));
+        if (ENABLE) {
+            if (log instanceof Throwable) {
+                System.out.println(TAG + LogUtil.getStackTraceString((Throwable) log));
+            } else {
+                System.out.println(TAG + LogUtil.toString(log));
+            }
         }
     }
 

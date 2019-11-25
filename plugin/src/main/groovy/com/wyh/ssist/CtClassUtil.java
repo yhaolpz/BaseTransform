@@ -18,7 +18,6 @@ public class CtClassUtil {
         try {
             Object[] annotations = ctMethod.getAnnotations();
             if (annotations != null) {
-                LogUtil.println(annotations);
                 for (Object annotation1 : annotations) {
                     if (Objects.equals(annotation, annotation1.toString())) {
                         return true;

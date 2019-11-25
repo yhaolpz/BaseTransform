@@ -12,7 +12,7 @@ public class Test {
 
     @Aop
     public void test() {
-        Log.d("Test", "test Aop");
+        Log.d("Test", "test Aop a");
     }
 
 }

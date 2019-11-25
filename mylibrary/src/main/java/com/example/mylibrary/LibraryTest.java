@@ -10,6 +10,6 @@ public class LibraryTest {
 
     @Aop
     public static void log() {
-        Log.d("LibraryTest", "log: abc");
+        Log.d("LibraryTest", "log: abcc");
     }
 }

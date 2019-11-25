@@ -25,6 +25,11 @@ public class LogTransform extends BaseTransform {
         super(project);
     }
 
+    @Override
+    public boolean logEnable() {
+        return true;
+    }
+
 
     @Override
     public String getName() {

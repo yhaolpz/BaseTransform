@@ -52,14 +52,16 @@ public abstract class BaseTransform extends Transform implements ITransform {
 
     private static final FileTime ZERO = FileTime.fromMillis(0L);
 
-    private ClassPool mClassPool;
-    private Project mProject;
-    private Set<ClassPath> mClassPathSet;
+    private final Project mProject;
+    private final ClassPool mClassPool = ClassPool.getDefault();
+    private final Set<ClassPath> mClassPathSet = new HashSet<>();
+    private final ClassCountInfo mDirCountInfo = new ClassCountInfo();
+    private final ClassCountInfo mJarCountInfo = new ClassCountInfo();
 
     public BaseTransform(Project project) {
         this.mProject = project;
-        mClassPool = ClassPool.getDefault();
-        mClassPathSet = new HashSet<>();
+        LogUtil.TAG = "[" + getName() + "]";
+        LogUtil.ENABLE = logEnable();
     }
 
     @Override
@@ -71,6 +73,11 @@ public abstract class BaseTransform extends Transform implements ITransform {
     public Set<? super QualifiedContent.Scope> getScopes() {
         return TransformManager.SCOPE_FULL_PROJECT;
     }
+
+    /**
+     * 是否打印编译处理日志
+     */
+    public abstract boolean logEnable();
 
     @Override
     public boolean isCacheable() {
@@ -101,21 +108,22 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 for (File bootDir : bootClassPaths) {
                     final String classPath = bootDir.getAbsolutePath();
                     mClassPathSet.add(mClassPool.appendClassPath(classPath)); //类查找路径添加根目录
-                    println("appendClassPath : " + classPath);
+                    println("appendClassPath: " + classPath);
                 }
             }
             for (TransformInput input : inputs) {
                 for (JarInput jarInput : input.getJarInputs()) {
                     final String classPath = jarInput.getFile().getAbsolutePath();
                     mClassPathSet.add(mClassPool.insertClassPath(classPath)); //类查找路径添加每个 jar 路径
-                    println("insertClassPath(jarInput) : " + classPath);
+                    println("insertClassPath(jarInput): " + classPath);
                 }
                 for (DirectoryInput directoryInput : input.getDirectoryInputs()) {
                     String classPath = directoryInput.getFile().getAbsolutePath();
                     mClassPathSet.add(mClassPool.insertClassPath(classPath)); //类查找路径添加每个源码文件夹
-                    println("insertClassPath(dirInput) : " + classPath);
+                    println("insertClassPath(dirInput): " + classPath);
                 }
             }
+            println("---start transform---");
             for (TransformInput input : inputs) {
                 for (JarInput jarInput : input.getJarInputs()) {
                     transformInput(jarInput, outputProvider, isIncremental); //处理 jar 文件
@@ -125,8 +133,11 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 }
             }
         } catch (Exception e) {
+            println("--- transform error! ---");
             println(e);
         } finally {
+            println("dir count: " + mDirCountInfo.toString());
+            println("jar count: " + mJarCountInfo.toString());
             for (ClassPath classPath : mClassPathSet) {
                 /*
                  * 移除所有的类查找路径，防止 clean Project 时发生 Failed to delete some children :
@@ -135,7 +146,9 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 mClassPool.removeClassPath(classPath);
             }
             mClassPathSet.clear();
-            println("---removeAllClassPath---");
+            mJarCountInfo.clean();
+            mDirCountInfo.clean();
+            println("---remove all classPath---");
             println("---end---");
         }
     }
@@ -166,18 +179,26 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 File destFile = new File(destFilePath);
                 switch (changedFile.getValue()) {
                     case NOTCHANGED:
+                        mDirCountInfo.add(ClassCountInfo.FILE_NOTCHANGED);
                         break;
                     case REMOVED:
                         if (destFile.exists()) {
                             FileUtils.forceDelete(destFile);
                         }
+                        mDirCountInfo.add(ClassCountInfo.FILE_REMOVED);
                         break;
                     case ADDED:
+                        FileUtils.touch(destFile);
+                        transformFileInner(inputClassPath, directoryInputFile, inputFile, destFile);
+                        mDirCountInfo.add(ClassCountInfo.FILE_ADDED);
+                        break;
                     case CHANGED:
                         FileUtils.touch(destFile);
                         transformFileInner(inputClassPath, directoryInputFile, inputFile, destFile);
+                        mDirCountInfo.add(ClassCountInfo.FILE_CHANGED);
                         break;
                 }
+                mDirCountInfo.add(ClassCountInfo.FILE_ALL);
             }
         } else {
             if (directoryInputFile.isDirectory()) {
@@ -185,6 +206,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
                     String inputFilePath = inputFile.getAbsolutePath();
                     transformFileInner(inputClassPath, directoryInputFile, inputFile,
                             new File(inputFilePath.replace(inputClassPath, destDirPath)));
+                    mDirCountInfo.add(ClassCountInfo.FILE_ALL);
                 }
             }
         }
@@ -199,10 +221,12 @@ public abstract class BaseTransform extends Transform implements ITransform {
      * @param outputFile     处理后的输出文件
      */
     private void transformFileInner(String inputClassPath, File dirFile, File inputFile, File outputFile) {
+        mDirCountInfo.add(ClassCountInfo.CLASS_TRANSFORM_TRY);
         if (tryTransformDirClassFile(dirFile, inputFile)) {
+            mDirCountInfo.add(ClassCountInfo.CLASS_TRANSFORM);
             try {
                 CtClass ctClass = getCtClass(inputClassPath, inputFile);
-                println("transformDirClassFile:" + ctClass.getName());
+                println("transformDirClassFile: " + ctClass.getName());
                 transformDirClassFile(ctClass);
                 ctClass.writeFile(inputClassPath);
                 ctClass.detach();
@@ -237,24 +261,29 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 jarInput.getScopes(),
                 Format.JAR);
         if (isIncremental) {
-            //todo 记录 jar 处理数量打印
-            println("transformInput(jarInput)：jarName=" + jarName + " state：" + jarInput.getStatus().toString());
             switch (jarInput.getStatus()) {
                 case NOTCHANGED:
+                    mJarCountInfo.add(ClassCountInfo.FILE_NOTCHANGED);
                     break;
                 case ADDED:
+                    transformJarInner(jarInput.getFile(), dest);
+                    mJarCountInfo.add(ClassCountInfo.FILE_ADDED);
+                    break;
                 case CHANGED:
                     transformJarInner(jarInput.getFile(), dest);
+                    mJarCountInfo.add(ClassCountInfo.FILE_CHANGED);
                     break;
                 case REMOVED:
                     if (dest.exists()) {
                         FileUtils.forceDelete(dest);
                     }
+                    mJarCountInfo.add(ClassCountInfo.FILE_REMOVED);
                     break;
             }
         } else {
             transformJarInner(jarInput.getFile(), dest);
         }
+        mJarCountInfo.add(ClassCountInfo.FILE_ALL);
     }
 
     /**
@@ -275,10 +304,12 @@ public abstract class BaseTransform extends Transform implements ITransform {
                     InputStream originalFile = new BufferedInputStream(inputStream);
                     ZipEntry outEntry = new ZipEntry(entry.getName());
                     byte[] newEntryContent;
+                    mJarCountInfo.add(ClassCountInfo.CLASS_TRANSFORM_TRY);
                     if (tryTransformJarClassFile(inputJarFile, outEntry.getName())) {
+                        mJarCountInfo.add(ClassCountInfo.CLASS_TRANSFORM);
                         try {
                             CtClass ctClass = mClassPool.makeClass(originalFile, false);
-                            println("transformJarClassFile:" + ctClass.getName());
+                            println("transformJarClassFile: " + ctClass.getName());
                             transformJarClassFile(ctClass);
                             newEntryContent = ctClass.toBytecode();
                         } catch (RuntimeException e) {
