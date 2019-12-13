@@ -295,6 +295,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
     private void transformJarInner(File inputJarFile, File outputJarFile) {
         if (tryTransformJarFile(inputJarFile)) {
             try {
+                println("[---start---]transformJarClassFile start,input=" + inputJarFile.toPath());
                 ZipFile inputZip = new ZipFile(inputJarFile);
                 ZipOutputStream outputZip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(outputJarFile.toPath())));
                 Enumeration inEntries = inputZip.entries();
@@ -309,7 +310,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
                         mJarCountInfo.add(ClassCountInfo.CLASS_TRANSFORM);
                         try {
                             CtClass ctClass = mClassPool.makeClass(originalFile, false);
-                            println("transformJarClassFile: " + ctClass.getName());
+                            println("[trans]transformJarClassFile: " + ctClass.getName());
                             transformJarClassFile(ctClass);
                             newEntryContent = ctClass.toBytecode();
                         } catch (RuntimeException e) {
@@ -337,6 +338,7 @@ public abstract class BaseTransform extends Transform implements ITransform {
                 outputZip.flush();
                 IOUtil.closeQuietly(outputZip);
                 IOUtil.closeQuietly(inputZip);
+                println("[---end---]transformJarClassFile done,output=" + outputJarFile.toPath());
             } catch (Exception e) {
                 println(e);
             }
